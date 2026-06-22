@@ -1,10 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { fetchFromBackend } from './services/api';
 
-type ApiName = 'XAUUSD' | 'DXY' | 'VIX' | 'UST10Y' | 'Real Yield' | 'News';
+type ApiName = 'DXY' | 'VIX' | 'UST10Y' | 'Real Yield' | 'News';
+
+declare global {
+  interface Window {
+    TradingView: any;
+  }
+}
 
 function App() {
-  const [xauData, setXauData] = useState<any>(null);
   const [dxy, setDxy] = useState<number | null>(null);
   const [vix, setVix] = useState<number | null>(null);
   const [ust10y, setUst10y] = useState<number | null>(null);
@@ -12,7 +17,6 @@ function App() {
   const [news, setNews] = useState<any[]>([]);
   const [lastUpdate, setLastUpdate] = useState<string>('');
   const [apiStatus, setApiStatus] = useState<Record<ApiName, boolean>>({
-    'XAUUSD': false,
     'DXY': false,
     'VIX': false,
     'UST10Y': false,
@@ -20,6 +24,7 @@ function App() {
     'News': false,
   });
 
+  // Estrutura de mercado (usa um preço de referência via widget? manteremos o último preço do backend ou um fallback)
   const lastPriceRef = useRef<number | null>(null);
   const structureRef = useRef<{ support: number; resistance: number; bos: string | null; fvg: string | null }>({
     support: 0, resistance: 0, bos: null, fvg: null,
@@ -42,115 +47,33 @@ function App() {
     let vixVal: number | null = null;
     let ustVal: number | null = null;
     let realVal: number | null = null;
-    let xauPrice: number | null = null;
 
     const newStatus: Record<ApiName, boolean> = {
-      'XAUUSD': false, 'DXY': false, 'VIX': false, 'UST10Y': false, 'Real Yield': false, 'News': false,
+      'DXY': false, 'VIX': false, 'UST10Y': false, 'Real Yield': false, 'News': false,
     };
 
-    // ----- XAUUSD (com logs detalhados) -----
-    console.log('[XAU] Buscando preço...');
-    try {
-      const xau = await fetchFromBackend('/api/twelve/XAUUSD');
-      console.log('[XAU] Twelve Data resposta:', xau);
-      xauPrice = safeParseFloat(xau?.close);
-      if (xauPrice !== null) {
-        setXauData(xau);
-        newStatus['XAUUSD'] = true;
-        console.log('[XAU] Preço obtido via Twelve Data:', xauPrice);
-      }
-    } catch (e) {
-      console.warn('[XAU] Twelve Data falhou:', e);
-    }
-
-    if (xauPrice === null) {
-      console.log('[XAU] Tentando Yahoo Finance...');
-      try {
-        const yahooRes = await fetchFromBackend('/api/yahoo/GC=F');
-        console.log('[XAU] Yahoo resposta:', yahooRes);
-        xauPrice = safeParseFloat(yahooRes?.c);
-        if (xauPrice !== null) {
-          setXauData({
-            close: xauPrice,
-            change: (yahooRes?.c ?? 0) - (yahooRes?.pc ?? xauPrice),
-            percent_change: (( (yahooRes?.c ?? 0) - (yahooRes?.pc ?? xauPrice) ) / (yahooRes?.pc || 1)) * 100,
-          });
-          newStatus['XAUUSD'] = true;
-          console.log('[XAU] Preço obtido via Yahoo:', xauPrice);
-        }
-      } catch (e) {
-        console.error('[XAU] Yahoo Finance falhou:', e);
-      }
-    }
-
-    if (xauPrice === null) {
-      console.warn('[XAU] Nenhuma fonte de preço disponível. Exibindo último valor conhecido ou ---');
-      // Mantém o último preço válido, se existir
-      if (lastPriceRef.current !== null) {
-        setXauData((prev: any) => prev || { close: lastPriceRef.current });
-      }
-    } else {
-      lastPriceRef.current = xauPrice;
-    }
-
-    // --- Atualizar estrutura de mercado ---
-    const atr = safeParseFloat(xauData?.atr) ?? 18.5;
-    const currentPrice = xauPrice ?? lastPriceRef.current;
-    if (currentPrice !== null) {
-      const prevPrice = lastPriceRef.current;
-      const prevStructure = structureRef.current;
-      let newSupport = prevStructure.support;
-      let newResistance = prevStructure.resistance;
-      let bos: string | null = null;
-      let fvg: string | null = null;
-
-      if (newSupport === 0 || newResistance === 0) {
-        newSupport = currentPrice - atr * 0.5;
-        newResistance = currentPrice + atr * 0.5;
-      }
-
-      if (prevPrice !== null) {
-        if (currentPrice > prevResistance) {
-          bos = 'BOS ↑ (alta)';
-          newSupport = prevResistance;
-          newResistance = currentPrice + atr * 0.5;
-        } else if (currentPrice < prevSupport) {
-          bos = 'BOS ↓ (baixa)';
-          newResistance = prevSupport;
-          newSupport = currentPrice - atr * 0.5;
-        }
-        const move = Math.abs(currentPrice - prevPrice);
-        if (move > atr * 1.5) {
-          fvg = currentPrice > prevPrice ? 'FVG ↑' : 'FVG ↓';
-        }
-      }
-
-      structureRef.current = { support: newSupport, resistance: newResistance, bos, fvg };
-      setStructure({ support: newSupport, resistance: newResistance, bos, fvg });
-    }
-
-    // --- DXY ---
+    // DXY
     try {
       const dxyRes = await fetchFromBackend('/api/finnhub/DX-Y.NYB');
       dxyVal = safeParseFloat(dxyRes?.c);
       if (dxyVal !== null) { setDxy(dxyVal); newStatus['DXY'] = true; }
     } catch {}
 
-    // --- VIX ---
+    // VIX
     try {
       const vixRes = await fetchFromBackend('/api/finnhub/VIX');
       vixVal = safeParseFloat(vixRes?.c);
       if (vixVal !== null) { setVix(vixVal); newStatus['VIX'] = true; }
     } catch {}
 
-    // --- UST 10Y ---
+    // UST 10Y
     try {
       const ustRes = await fetchFromBackend('/api/alphavantage?function=TREASURY_YIELD&maturity=10year');
       ustVal = safeParseFloat(ustRes?.data?.[0]?.value);
       if (ustVal !== null) { setUst10y(ustVal); newStatus['UST10Y'] = true; }
     } catch {}
 
-    // --- Real Yield ---
+    // Real Yield
     try {
       const fredRes = await fetchFromBackend('/api/fred?series=DFII10');
       realVal = safeParseFloat(fredRes?.observations?.[0]?.value);
@@ -164,7 +87,7 @@ function App() {
     if (dxyVal === null) setDxy(104.8);
     if (vixVal === null) setVix(16.5);
 
-    // --- News ---
+    // News
     try {
       const newsRes = await fetchFromBackend('/api/gnews?q=gold+XAUUSD&max=5');
       if (newsRes?.articles) { setNews(newsRes.articles.slice(0, 5)); newStatus['News'] = true; }
@@ -172,6 +95,45 @@ function App() {
 
     setApiStatus(newStatus);
     setLastUpdate(new Date().toLocaleString('pt-BR'));
+
+    // O preço do XAUUSD virá do widget TradingView – não precisamos mais de fetch para ele.
+    // Mas para estrutura de mercado, podemos usar um valor aproximado (ex: 4200 enquanto o widget carrega)
+    // ou extrair o preço do widget via JavaScript (limitado). Manteremos a estrutura com base em fallback.
+    const fallbackPrice = 4200; // será atualizado quando possível
+    if (lastPriceRef.current === null) lastPriceRef.current = fallbackPrice;
+    const atr = 18.5; // ATR fixo já que não buscaremos mais da Twelve Data
+    const currentPrice = lastPriceRef.current;
+    const prevPrice = lastPriceRef.current; // simplificado
+    const prevStructure = structureRef.current;
+    let newSupport = prevStructure.support;
+    let newResistance = prevStructure.resistance;
+    let bos: string | null = null;
+    let fvg: string | null = null;
+
+    if (newSupport === 0 || newResistance === 0) {
+      newSupport = currentPrice - atr * 0.5;
+      newResistance = currentPrice + atr * 0.5;
+    }
+
+    if (prevPrice !== null) {
+      if (currentPrice > prevResistance) {
+        bos = 'BOS ↑ (alta)';
+        newSupport = prevResistance;
+        newResistance = currentPrice + atr * 0.5;
+      } else if (currentPrice < prevSupport) {
+        bos = 'BOS ↓ (baixa)';
+        newResistance = prevSupport;
+        newSupport = currentPrice - atr * 0.5;
+      }
+      const move = Math.abs(currentPrice - prevPrice);
+      if (move > atr * 1.5) {
+        fvg = currentPrice > prevPrice ? 'FVG ↑' : 'FVG ↓';
+      }
+    }
+
+    structureRef.current = { support: newSupport, resistance: newResistance, bos, fvg };
+    setStructure({ support: newSupport, resistance: newResistance, bos, fvg });
+    lastPriceRef.current = currentPrice;
   }
 
   useEffect(() => {
@@ -180,14 +142,36 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
-  const price = safeParseFloat(xauData?.close);
-  const change = safeParseFloat(xauData?.change) ?? 0;
-  const changePct = safeParseFloat(xauData?.percent_change) ?? 0;
-  const atr = safeParseFloat(xauData?.atr) ?? 18.5;
-
-  const targetLow = price !== null ? (price + atr).toFixed(2) : null;
-  const targetHigh = price !== null ? (price + atr * 2).toFixed(2) : null;
-  const zoneAlvo = targetLow && targetHigh ? `${targetLow} – ${targetHigh}` : '---';
+  // Inicializa widget TradingView
+  useEffect(() => {
+    const script = document.createElement('script');
+    script.src = 'https://s3.tradingview.com/tv.js';
+    script.async = true;
+    script.onload = () => {
+      if (window.TradingView) {
+        new window.TradingView.widget({
+          container_id: 'tv-mini-chart',
+          symbol: 'OANDA:XAUUSD',
+          interval: '60',
+          timezone: 'America/Sao_Paulo',
+          theme: 'dark',
+          style: '1',
+          locale: 'br',
+          toolbar_bg: '#f1f3f6',
+          enable_publishing: false,
+          hide_top_toolbar: true,
+          hide_legend: true,
+          save_image: false,
+          height: 120,
+          width: '100%',
+        });
+      }
+    };
+    document.body.appendChild(script);
+    return () => {
+      document.body.removeChild(script);
+    };
+  }, []);
 
   const macroScore = (() => {
     let score = 50;
@@ -202,30 +186,26 @@ function App() {
 
   const liveCount = Object.values(apiStatus).filter(Boolean).length;
 
+  // Zona alvo (usando fallback de preço)
+  const zoneAlvo = lastPriceRef.current ? `${(lastPriceRef.current + 18.5).toFixed(2)} – ${(lastPriceRef.current + 37).toFixed(2)}` : '---';
+
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100">
+      {/* Header */}
       <header className="sticky top-0 z-50 bg-gray-900/80 backdrop-blur border-b border-gray-800 px-4 py-3 flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
           <h1 className="text-lg font-bold text-amber-400 tracking-wide">XAU AI TERMINAL</h1>
-          <span className="text-xs text-gray-500 hidden sm:inline">v2.7 · Institutional</span>
+          <span className="text-xs text-gray-500 hidden sm:inline">v3.0 · +TradingView</span>
         </div>
         <div className="flex items-center gap-4">
-          <div>
-            <span className="text-xs text-gray-500">XAUUSD</span>
-            <div className="text-2xl font-mono font-bold">
-              {price !== null ? `$${price.toFixed(2)}` : '---'}
-            </div>
-            {price !== null && (
-              <span className={`text-sm font-semibold ${change >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                {change >= 0 ? '+' : ''}{change.toFixed(2)} ({changePct >= 0 ? '+' : ''}{changePct.toFixed(2)}%)
-              </span>
-            )}
-          </div>
+          {/* Widget do TradingView no lugar do preço estático */}
+          <div className="w-40 h-16 bg-gray-800 rounded border border-gray-700 overflow-hidden" id="tv-mini-chart" />
           <button onClick={loadData} className="px-3 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm hover:border-amber-500 transition">⟳</button>
         </div>
       </header>
 
+      {/* Painel de status das APIs */}
       <div className="bg-gray-900 border-b border-gray-800 px-4 py-2">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs max-w-[1800px] mx-auto">
           <span className="text-gray-500 mr-1">APIs:</span>
@@ -241,7 +221,9 @@ function App() {
         </div>
       </div>
 
+      {/* Dashboard */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-4 max-w-[1800px] mx-auto">
+        {/* Macro */}
         <Card title="🌐 Macro Global" badge={macroScore && macroScore >= 60 ? 'BULLISH' : 'NEUTRAL'} badgeColor={macroScore && macroScore >= 60 ? 'green' : 'yellow'}>
           <div className="space-y-2 text-sm">
             <Row label="DXY" value={dxy !== null ? dxy.toFixed(2) : undefined} />
@@ -336,6 +318,7 @@ function App() {
           </div>
         </Card>
 
+        {/* Veredict */}
         <div className="col-span-1 md:col-span-2 lg:col-span-3 xl:col-span-4 bg-gray-900 border-2 border-amber-500/50 rounded-xl p-5 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <div className="w-16 h-16 rounded-full border-4 border-green-500 flex items-center justify-center text-2xl font-bold text-green-400">
@@ -358,7 +341,7 @@ function App() {
       </div>
 
       <footer className="text-center text-xs text-gray-600 py-4 border-t border-gray-800">
-        XAU AI Terminal · Backend: Render · Frontend: GitHub Pages
+        XAU AI Terminal · Backend: Render · Gráfico: TradingView
       </footer>
     </div>
   );

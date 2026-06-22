@@ -30,7 +30,7 @@ function App() {
     try {
       const xau = await fetchFromBackend('/api/twelve/XAUUSD');
       setXauData(xau);
-      liveCount++;
+      if (xau && xau.close) liveCount++;
     } catch {}
 
     // DXY real via Finnhub
@@ -96,6 +96,14 @@ function App() {
   const change = safeParseFloat(xauData?.change) ?? 0;
   const changePct = safeParseFloat(xauData?.percent_change) ?? 0;
 
+  // Cálculo do ATR (tenta obter do dado real, senão usa fallback 18.5)
+  const atr = safeParseFloat(xauData?.atr) ?? 18.5;
+
+  // Zona alvo dinâmica: Alvo 1 = preço + 1×ATR, Alvo 2 = preço + 2×ATR
+  const targetLow = price !== null ? (price + atr).toFixed(2) : null;
+  const targetHigh = price !== null ? (price + atr * 2).toFixed(2) : null;
+  const zoneAlvo = targetLow && targetHigh ? `${targetLow} – ${targetHigh}` : '---';
+
   // Cálculo do score macro com os indicadores disponíveis
   const macroScore = (() => {
     let score = 50;
@@ -133,7 +141,7 @@ function App() {
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
           <h1 className="text-lg font-bold text-amber-400 tracking-wide">XAU AI TERMINAL</h1>
-          <span className="text-xs text-gray-500 hidden sm:inline">v2.1 · Institutional</span>
+          <span className="text-xs text-gray-500 hidden sm:inline">v2.2 · Institutional</span>
         </div>
         <div className="flex items-center gap-4">
           <div>
@@ -246,7 +254,7 @@ function App() {
           <div className="flex gap-6 text-center">
             <div><div className="text-xs text-gray-500">Score Geral</div><div className="text-xl font-bold">{macroScore ?? '--'}/100</div></div>
             <div><div className="text-xs text-gray-500">Confiança</div><div className="text-xl font-bold">{confidence}%</div></div>
-            <div><div className="text-xs text-gray-500">Zona Alvo</div><div className="text-xl font-bold text-green-400">2.685-2.710</div></div>
+            <div><div className="text-xs text-gray-500">Zona Alvo</div><div className="text-xl font-bold text-green-400">{zoneAlvo}</div></div>
           </div>
         </div>
       </div>

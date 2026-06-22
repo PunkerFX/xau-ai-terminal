@@ -13,6 +13,7 @@ app.get('/', (req, res) => {
   res.send('✅ XAU AI Terminal Backend Online');
 });
 
+// ========== PROXY TWELVE DATA (XAU/USD) ==========
 app.get('/api/twelve/:symbol', async (req, res) => {
   let { symbol } = req.params;
   if (symbol === 'XAUUSD') symbol = 'XAU/USD';
@@ -27,6 +28,23 @@ app.get('/api/twelve/:symbol', async (req, res) => {
   }
 });
 
+// ========== PROXY FINNHUB (DXY, VIX) ==========
+app.get('/api/finnhub/:symbol', async (req, res) => {
+  const { symbol } = req.params;
+  const key = process.env.FINNHUB_API_KEY;
+  if (!key) return res.status(500).json({ error: 'Chave Finnhub não configurada' });
+  try {
+    // Finnhub usa o endpoint /quote para ações e índices
+    const response = await fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${key}`);
+    const data = await response.json();
+    // A Finnhub retorna { c: preço atual, h: alta, l: baixa, o: abertura, pc: fechamento anterior }
+    res.json(data);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ========== ALPHA VANTAGE (COM CACHE) ==========
 let alphaCache = { data: null, timestamp: 0 };
 
 app.get('/api/alphavantage', async (req, res) => {
@@ -52,6 +70,7 @@ app.get('/api/alphavantage', async (req, res) => {
   }
 });
 
+// ========== PROXY FRED ==========
 app.get('/api/fred', async (req, res) => {
   const key = process.env.FRED_API_KEY;
   if (!key) return res.status(500).json({ error: 'Chave FRED não configurada' });
@@ -65,6 +84,7 @@ app.get('/api/fred', async (req, res) => {
   }
 });
 
+// ========== PROXY NEWSAPI ==========
 app.get('/api/gnews', async (req, res) => {
   const key = process.env.NEWSAPI_KEY;
   if (!key) return res.status(500).json({ error: 'Chave NewsAPI não configurada' });

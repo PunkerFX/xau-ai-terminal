@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { fetchFromBackend } from './services/api';
 
+type ApiName = 'XAUUSD' | 'DXY' | 'VIX' | 'UST10Y' | 'Real Yield' | 'News';
+
 function App() {
   const [xauData, setXauData] = useState<any>(null);
   const [dxy, setDxy] = useState<number | null>(null);
@@ -9,7 +11,14 @@ function App() {
   const [realYield, setRealYield] = useState<number | null>(null);
   const [news, setNews] = useState<any[]>([]);
   const [lastUpdate, setLastUpdate] = useState<string>('');
-  const [dataSource, setDataSource] = useState<string>('...');
+  const [apiStatus, setApiStatus] = useState<Record<ApiName, boolean>>({
+    'XAUUSD': false,
+    'DXY': false,
+    'VIX': false,
+    'UST10Y': false,
+    'Real Yield': false,
+    'News': false,
+  });
 
   function safeParseFloat(value: any): number | null {
     if (typeof value === 'number' && !isNaN(value) && value !== 0) return value;
@@ -25,64 +34,82 @@ function App() {
     let vixVal: number | null = null;
     let ustVal: number | null = null;
     let realVal: number | null = null;
-    let liveCount = 0;
+    const newStatus: Record<ApiName, boolean> = {
+      'XAUUSD': false,
+      'DXY': false,
+      'VIX': false,
+      'UST10Y': false,
+      'Real Yield': false,
+      'News': false,
+    };
 
+    // XAUUSD
     try {
       const xau = await fetchFromBackend('/api/twelve/XAUUSD');
       setXauData(xau);
-      if (xau && xau.close) liveCount++;
+      if (xau && xau.close) newStatus['XAUUSD'] = true;
     } catch {}
 
-    // DXY real (Finnhub com fallback para Yahoo)
+    // DXY
     try {
       const dxyRes = await fetchFromBackend('/api/finnhub/DX-Y.NYB');
       dxyVal = safeParseFloat(dxyRes?.c);
-      if (dxyVal !== null) { setDxy(dxyVal); liveCount++; }
+      if (dxyVal !== null) {
+        setDxy(dxyVal);
+        newStatus['DXY'] = true;
+      }
     } catch {}
 
-    // VIX real (Finnhub com fallback para Yahoo)
+    // VIX
     try {
       const vixRes = await fetchFromBackend('/api/finnhub/VIX');
       vixVal = safeParseFloat(vixRes?.c);
-      if (vixVal !== null) { setVix(vixVal); liveCount++; }
+      if (vixVal !== null) {
+        setVix(vixVal);
+        newStatus['VIX'] = true;
+      }
     } catch {}
 
-    // UST 10Y via Alpha Vantage (com cache no backend)
+    // UST 10Y
     try {
       const ustRes = await fetchFromBackend('/api/alphavantage?function=TREASURY_YIELD&maturity=10year');
       ustVal = safeParseFloat(ustRes?.data?.[0]?.value);
-      if (ustVal !== null) { setUst10y(ustVal); liveCount++; }
+      if (ustVal !== null) {
+        setUst10y(ustVal);
+        newStatus['UST10Y'] = true;
+      }
     } catch {}
 
-    // Real Yield via FRED
+    // Real Yield
     try {
       const fredRes = await fetchFromBackend('/api/fred?series=DFII10');
       realVal = safeParseFloat(fredRes?.observations?.[0]?.value);
-      if (realVal !== null) { setRealYield(realVal); liveCount++; }
+      if (realVal !== null) {
+        setRealYield(realVal);
+        newStatus['Real Yield'] = true;
+      }
     } catch {}
 
-    // Fallback para UST10Y baseado no Real Yield
+    // Fallback UST10Y
     if (ustVal === null && realVal !== null) {
       ustVal = realVal + 2.0;
       setUst10y(ustVal);
     }
 
-    // Fallback neutro para DXY e VIX se as APIs falharem
-    if (dxyVal === null) {
-      dxyVal = 104.8;
-      setDxy(dxyVal);
-    }
-    if (vixVal === null) {
-      vixVal = 16.5;
-      setVix(vixVal);
-    }
+    // Fallback DXY/VIX
+    if (dxyVal === null) setDxy(104.8);
+    if (vixVal === null) setVix(16.5);
 
+    // News
     try {
       const newsRes = await fetchFromBackend('/api/gnews?q=gold+XAUUSD&max=5');
-      if (newsRes?.articles) setNews(newsRes.articles.slice(0, 5));
+      if (newsRes?.articles) {
+        setNews(newsRes.articles.slice(0, 5));
+        newStatus['News'] = true;
+      }
     } catch {}
 
-    setDataSource(`${liveCount} APIs ao vivo`);
+    setApiStatus(newStatus);
     setLastUpdate(new Date().toLocaleString('pt-BR'));
   }
 
@@ -95,7 +122,6 @@ function App() {
   const price = safeParseFloat(xauData?.close);
   const change = safeParseFloat(xauData?.change) ?? 0;
   const changePct = safeParseFloat(xauData?.percent_change) ?? 0;
-
   const atr = safeParseFloat(xauData?.atr) ?? 18.5;
 
   const targetLow = price !== null ? (price + atr).toFixed(2) : null;
@@ -105,39 +131,24 @@ function App() {
   const macroScore = (() => {
     let score = 50;
     let divisors = 0;
-
-    if (dxy !== null) {
-      score += dxy < 105 ? 15 : -10;
-      divisors++;
-    }
-    if (ust10y !== null) {
-      score += ust10y < 4.5 ? 12 : -8;
-      divisors++;
-    }
-    if (realYield !== null) {
-      score += realYield < 2.0 ? 15 : -10;
-      divisors++;
-    }
-    if (vix !== null) {
-      score += vix > 20 ? 10 : vix > 30 ? 20 : 0;
-      divisors++;
-    }
-
-    if (divisors >= 2) {
-      return Math.min(100, Math.max(10, Math.round(score)));
-    }
+    if (dxy !== null) { score += dxy < 105 ? 15 : -10; divisors++; }
+    if (ust10y !== null) { score += ust10y < 4.5 ? 12 : -8; divisors++; }
+    if (realYield !== null) { score += realYield < 2.0 ? 15 : -10; divisors++; }
+    if (vix !== null) { score += vix > 20 ? 10 : vix > 30 ? 20 : 0; divisors++; }
+    if (divisors >= 2) return Math.min(100, Math.max(10, Math.round(score)));
     return null;
   })();
 
-  const confidence = macroScore ?? 0;
+  const liveCount = Object.values(apiStatus).filter(Boolean).length;
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100">
+      {/* Header */}
       <header className="sticky top-0 z-50 bg-gray-900/80 backdrop-blur border-b border-gray-800 px-4 py-3 flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
           <h1 className="text-lg font-bold text-amber-400 tracking-wide">XAU AI TERMINAL</h1>
-          <span className="text-xs text-gray-500 hidden sm:inline">v2.3 · Institutional</span>
+          <span className="text-xs text-gray-500 hidden sm:inline">v2.4 · Institutional</span>
         </div>
         <div className="flex items-center gap-4">
           <div>
@@ -155,11 +166,25 @@ function App() {
         </div>
       </header>
 
-      <div className="text-center text-xs text-gray-600 py-1">
-        {dataSource} · Última atualização: {lastUpdate || 'Carregando...'}
+      {/* Painel de status das APIs */}
+      <div className="bg-gray-900 border-b border-gray-800 px-4 py-2">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs max-w-[1800px] mx-auto">
+          <span className="text-gray-500 mr-1">APIs:</span>
+          {Object.entries(apiStatus).map(([name, isLive]) => (
+            <div key={name} className="flex items-center gap-1">
+              <span className={`w-2 h-2 rounded-full ${isLive ? 'bg-green-500 shadow-[0_0_6px_#00c897]' : 'bg-red-500 shadow-[0_0_6px_#e74c3c]'}`} />
+              <span className={isLive ? 'text-gray-300' : 'text-red-400'}>{name}</span>
+            </div>
+          ))}
+          <span className="text-gray-500 ml-auto">
+            {liveCount} ao vivo · {lastUpdate || 'Carregando...'}
+          </span>
+        </div>
       </div>
 
+      {/* Dashboard */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-4 max-w-[1800px] mx-auto">
+        {/* Macro */}
         <Card title="🌐 Macro Global" badge={macroScore && macroScore >= 60 ? 'BULLISH' : 'NEUTRAL'} badgeColor={macroScore && macroScore >= 60 ? 'green' : 'yellow'}>
           <div className="space-y-2 text-sm">
             <Row label="DXY" value={dxy !== null ? dxy.toFixed(2) : undefined} />
@@ -231,6 +256,7 @@ function App() {
           </div>
         </Card>
 
+        {/* Veredict */}
         <div className="col-span-1 md:col-span-2 lg:col-span-3 xl:col-span-4 bg-gray-900 border-2 border-amber-500/50 rounded-xl p-5 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <div className="w-16 h-16 rounded-full border-4 border-green-500 flex items-center justify-center text-2xl font-bold text-green-400">
@@ -246,7 +272,7 @@ function App() {
           </div>
           <div className="flex gap-6 text-center">
             <div><div className="text-xs text-gray-500">Score Geral</div><div className="text-xl font-bold">{macroScore ?? '--'}/100</div></div>
-            <div><div className="text-xs text-gray-500">Confiança</div><div className="text-xl font-bold">{confidence}%</div></div>
+            <div><div className="text-xs text-gray-500">Confiança</div><div className="text-xl font-bold">{macroScore ?? '--'}%</div></div>
             <div><div className="text-xs text-gray-500">Zona Alvo</div><div className="text-xl font-bold text-green-400">{zoneAlvo}</div></div>
           </div>
         </div>

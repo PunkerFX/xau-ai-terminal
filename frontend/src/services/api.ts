@@ -1,6 +1,6 @@
 const BACKEND_URL = 'https://xau-usd-qlnq.onrender.com';
 
-async function fetchWithRetry(url: string, retries = 3, delayMs = 3000) {
+async function fetchWithRetry(url: string, retries = 3, delayMs = 3000): Promise<any> {
   for (let i = 0; i < retries; i++) {
     try {
       const controller = new AbortController();

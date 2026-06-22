@@ -10,29 +10,53 @@ function App() {
   const [news, setNews] = useState<any[]>([]);
   const [lastUpdate, setLastUpdate] = useState<string>('');
 
+  function safeParseFloat(value: any): number | null {
+    if (typeof value === 'number') return value;
+    if (typeof value === 'string') {
+      const parsed = parseFloat(value);
+      return isNaN(parsed) ? null : parsed;
+    }
+    return null;
+  }
+
   async function loadData() {
     try {
+      // XAUUSD
       const xau = await fetchFromBackend('/api/twelve/XAUUSD');
       setXauData(xau);
-      const dxyRes = await fetchFromBackend('/api/twelve/DXY');
-      setDxy(parseFloat(dxyRes.close));
-      const vixRes = await fetchFromBackend('/api/twelve/VIX');
-      setVix(parseFloat(vixRes.close));
 
+      // DXY
+      try {
+        const dxyRes = await fetchFromBackend('/api/twelve/DXY');
+        const dxyVal = safeParseFloat(dxyRes?.close);
+        if (dxyVal !== null) setDxy(dxyVal);
+      } catch {}
+
+      // VIX
+      try {
+        const vixRes = await fetchFromBackend('/api/twelve/VIX');
+        const vixVal = safeParseFloat(vixRes?.close);
+        if (vixVal !== null) setVix(vixVal);
+      } catch {}
+
+      // UST 10Y
       try {
         const ustRes = await fetchFromBackend('/api/alphavantage?function=TREASURY_YIELD&maturity=10year');
-        if (ustRes?.data?.[0]?.value) setUst10y(parseFloat(ustRes.data[0].value));
+        const ustVal = safeParseFloat(ustRes?.data?.[0]?.value);
+        if (ustVal !== null) setUst10y(ustVal);
       } catch {}
 
+      // Real Yield
       try {
         const fredRes = await fetchFromBackend('/api/fred?series=DFII10');
-        if (fredRes?.observations?.[0]?.value) setRealYield(parseFloat(fredRes.observations[0].value));
+        const ryVal = safeParseFloat(fredRes?.observations?.[0]?.value);
+        if (ryVal !== null) setRealYield(ryVal);
       } catch {}
 
+      // News
       try {
         const newsRes = await fetchFromBackend('/api/gnews?q=gold+XAUUSD&max=5');
         if (newsRes?.articles) setNews(newsRes.articles.slice(0, 5));
-        else if (newsRes?.status === 'ok') setNews(newsRes.articles?.slice(0, 5) || []);
       } catch {}
 
       setLastUpdate(new Date().toLocaleString('pt-BR'));
@@ -47,11 +71,11 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
-  const price = xauData?.close ? parseFloat(xauData.close) : null;
-  const change = xauData?.change ? parseFloat(xauData.change) : 0;
-  const changePct = xauData?.percent_change ? parseFloat(xauData.percent_change) : 0;
+  const price = safeParseFloat(xauData?.close);
+  const change = safeParseFloat(xauData?.change) ?? 0;
+  const changePct = safeParseFloat(xauData?.percent_change) ?? 0;
 
-  const macroScore = dxy && ust10y && realYield
+  const macroScore = dxy !== null && ust10y !== null && realYield !== null
     ? Math.min(100, Math.round(
         (dxy < 105 ? 30 : 0) +
         (ust10y < 4.5 ? 25 : 0) +
@@ -72,9 +96,9 @@ function App() {
           <div>
             <span className="text-xs text-gray-500">XAUUSD</span>
             <div className="text-2xl font-mono font-bold">
-              {price ? `$${price.toFixed(2)}` : '---'}
+              {price !== null ? `$${price.toFixed(2)}` : '---'}
             </div>
-            {price && (
+            {price !== null && (
               <span className={`text-sm font-semibold ${change >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                 {change >= 0 ? '+' : ''}{change.toFixed(2)} ({changePct >= 0 ? '+' : ''}{changePct.toFixed(2)}%)
               </span>
@@ -91,11 +115,11 @@ function App() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-4 max-w-[1800px] mx-auto">
         <Card title="🌐 Macro Global" badge={macroScore && macroScore >= 60 ? 'BULLISH' : 'NEUTRAL'} badgeColor={macroScore && macroScore >= 60 ? 'green' : 'yellow'}>
           <div className="space-y-2 text-sm">
-            <Row label="DXY" value={dxy?.toFixed(2)} />
-            <Row label="UST 10Y" value={ust10y ? ust10y.toFixed(2) + '%' : '--'} />
-            <Row label="Real Yield" value={realYield ? realYield.toFixed(2) + '%' : '--'} />
-            <Row label="VIX" value={vix?.toFixed(1)} />
-            {macroScore && (
+            <Row label="DXY" value={dxy !== null ? dxy.toFixed(2) : undefined} />
+            <Row label="UST 10Y" value={ust10y !== null ? ust10y.toFixed(2) + '%' : undefined} />
+            <Row label="Real Yield" value={realYield !== null ? realYield.toFixed(2) + '%' : undefined} />
+            <Row label="VIX" value={vix !== null ? vix.toFixed(1) : undefined} />
+            {macroScore !== null && (
               <div className="mt-2">
                 <div className="flex justify-between text-xs text-gray-500 mb-1"><span>Confiança</span><span>{macroScore}%</span></div>
                 <div className="w-full bg-gray-800 rounded-full h-2"><div className="bg-green-500 h-2 rounded-full" style={{ width: `${macroScore}%` }} /></div>

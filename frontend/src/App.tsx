@@ -34,6 +34,8 @@ function App() {
     let vixVal: number | null = null;
     let ustVal: number | null = null;
     let realVal: number | null = null;
+    let xauPrice: number | null = null;
+
     const newStatus: Record<ApiName, boolean> = {
       'XAUUSD': false,
       'DXY': false,
@@ -43,14 +45,37 @@ function App() {
       'News': false,
     };
 
-    // XAUUSD
+    // --- XAUUSD (preço do ouro) ---
+    // Tentativa 1: Twelve Data
     try {
       const xau = await fetchFromBackend('/api/twelve/XAUUSD');
-      setXauData(xau);
-      if (xau && xau.close) newStatus['XAUUSD'] = true;
+      xauPrice = safeParseFloat(xau?.close);
+      if (xauPrice !== null) {
+        setXauData(xau);
+        newStatus['XAUUSD'] = true;
+      }
     } catch {}
 
-    // DXY
+    // Tentativa 2: Yahoo Finance (fallback)
+    if (xauPrice === null) {
+      try {
+        const yahooRes = await fetchFromBackend('/api/yahoo/GC=F'); // GC=F é o contrato futuro de ouro
+        xauPrice = safeParseFloat(yahooRes?.c);
+        if (xauPrice !== null) {
+          // Converte para um formato similar ao da Twelve Data para manter compatibilidade
+          setXauData({
+            close: xauPrice,
+            change: yahooRes?.c - yahooRes?.pc,
+            percent_change: ((yahooRes?.c - yahooRes?.pc) / yahooRes?.pc) * 100,
+          });
+          newStatus['XAUUSD'] = true;
+        }
+      } catch {}
+    }
+
+    // Se ainda assim não conseguir, mantém o último valor (não seta para null)
+
+    // --- DXY ---
     try {
       const dxyRes = await fetchFromBackend('/api/finnhub/DX-Y.NYB');
       dxyVal = safeParseFloat(dxyRes?.c);
@@ -60,7 +85,7 @@ function App() {
       }
     } catch {}
 
-    // VIX
+    // --- VIX ---
     try {
       const vixRes = await fetchFromBackend('/api/finnhub/VIX');
       vixVal = safeParseFloat(vixRes?.c);
@@ -70,7 +95,7 @@ function App() {
       }
     } catch {}
 
-    // UST 10Y
+    // --- UST 10Y ---
     try {
       const ustRes = await fetchFromBackend('/api/alphavantage?function=TREASURY_YIELD&maturity=10year');
       ustVal = safeParseFloat(ustRes?.data?.[0]?.value);
@@ -80,7 +105,7 @@ function App() {
       }
     } catch {}
 
-    // Real Yield
+    // --- Real Yield ---
     try {
       const fredRes = await fetchFromBackend('/api/fred?series=DFII10');
       realVal = safeParseFloat(fredRes?.observations?.[0]?.value);
@@ -90,7 +115,7 @@ function App() {
       }
     } catch {}
 
-    // Fallback UST10Y
+    // Fallback UST10Y baseado no Real Yield
     if (ustVal === null && realVal !== null) {
       ustVal = realVal + 2.0;
       setUst10y(ustVal);
@@ -100,7 +125,7 @@ function App() {
     if (dxyVal === null) setDxy(104.8);
     if (vixVal === null) setVix(16.5);
 
-    // News
+    // --- News ---
     try {
       const newsRes = await fetchFromBackend('/api/gnews?q=gold+XAUUSD&max=5');
       if (newsRes?.articles) {
@@ -148,7 +173,7 @@ function App() {
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
           <h1 className="text-lg font-bold text-amber-400 tracking-wide">XAU AI TERMINAL</h1>
-          <span className="text-xs text-gray-500 hidden sm:inline">v2.4 · Institutional</span>
+          <span className="text-xs text-gray-500 hidden sm:inline">v2.5 · Institutional</span>
         </div>
         <div className="flex items-center gap-4">
           <div>

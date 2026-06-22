@@ -12,10 +12,10 @@ function App() {
   const [dataSource, setDataSource] = useState<string>('...');
 
   function safeParseFloat(value: any): number | null {
-    if (typeof value === 'number') return value;
+    if (typeof value === 'number' && !isNaN(value) && value !== 0) return value;
     if (typeof value === 'string') {
       const parsed = parseFloat(value);
-      return isNaN(parsed) ? null : parsed;
+      return isNaN(parsed) || parsed === 0 ? null : parsed;
     }
     return null;
   }
@@ -33,14 +33,14 @@ function App() {
       if (xau && xau.close) liveCount++;
     } catch {}
 
-    // DXY real via Finnhub
+    // DXY real (Finnhub com fallback para Yahoo)
     try {
       const dxyRes = await fetchFromBackend('/api/finnhub/DX-Y.NYB');
       dxyVal = safeParseFloat(dxyRes?.c);
       if (dxyVal !== null) { setDxy(dxyVal); liveCount++; }
     } catch {}
 
-    // VIX real via Finnhub
+    // VIX real (Finnhub com fallback para Yahoo)
     try {
       const vixRes = await fetchFromBackend('/api/finnhub/VIX');
       vixVal = safeParseFloat(vixRes?.c);
@@ -96,15 +96,12 @@ function App() {
   const change = safeParseFloat(xauData?.change) ?? 0;
   const changePct = safeParseFloat(xauData?.percent_change) ?? 0;
 
-  // Cálculo do ATR (tenta obter do dado real, senão usa fallback 18.5)
   const atr = safeParseFloat(xauData?.atr) ?? 18.5;
 
-  // Zona alvo dinâmica: Alvo 1 = preço + 1×ATR, Alvo 2 = preço + 2×ATR
   const targetLow = price !== null ? (price + atr).toFixed(2) : null;
   const targetHigh = price !== null ? (price + atr * 2).toFixed(2) : null;
   const zoneAlvo = targetLow && targetHigh ? `${targetLow} – ${targetHigh}` : '---';
 
-  // Cálculo do score macro com os indicadores disponíveis
   const macroScore = (() => {
     let score = 50;
     let divisors = 0;
@@ -136,12 +133,11 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100">
-      {/* Header */}
       <header className="sticky top-0 z-50 bg-gray-900/80 backdrop-blur border-b border-gray-800 px-4 py-3 flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
           <h1 className="text-lg font-bold text-amber-400 tracking-wide">XAU AI TERMINAL</h1>
-          <span className="text-xs text-gray-500 hidden sm:inline">v2.2 · Institutional</span>
+          <span className="text-xs text-gray-500 hidden sm:inline">v2.3 · Institutional</span>
         </div>
         <div className="flex items-center gap-4">
           <div>
@@ -163,9 +159,7 @@ function App() {
         {dataSource} · Última atualização: {lastUpdate || 'Carregando...'}
       </div>
 
-      {/* Dashboard */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-4 max-w-[1800px] mx-auto">
-        {/* Macro */}
         <Card title="🌐 Macro Global" badge={macroScore && macroScore >= 60 ? 'BULLISH' : 'NEUTRAL'} badgeColor={macroScore && macroScore >= 60 ? 'green' : 'yellow'}>
           <div className="space-y-2 text-sm">
             <Row label="DXY" value={dxy !== null ? dxy.toFixed(2) : undefined} />
@@ -237,7 +231,6 @@ function App() {
           </div>
         </Card>
 
-        {/* Veredict */}
         <div className="col-span-1 md:col-span-2 lg:col-span-3 xl:col-span-4 bg-gray-900 border-2 border-amber-500/50 rounded-xl p-5 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <div className="w-16 h-16 rounded-full border-4 border-green-500 flex items-center justify-center text-2xl font-bold text-green-400">

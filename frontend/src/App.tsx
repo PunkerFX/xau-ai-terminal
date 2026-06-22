@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { fetchFromBackend } from './services/api';
 
 type ApiName = 'XAUUSD' | 'DXY' | 'VIX' | 'UST10Y' | 'Real Yield' | 'News';
@@ -18,6 +18,21 @@ function App() {
     'UST10Y': false,
     'Real Yield': false,
     'News': false,
+  });
+
+  // Estrutura de mercado dinâmica
+  const lastPriceRef = useRef<number | null>(null);
+  const structureRef = useRef<{ support: number; resistance: number; bos: string | null; fvg: string | null }>({
+    support: 0,
+    resistance: 0,
+    bos: null,
+    fvg: null,
+  });
+  const [structure, setStructure] = useState<{ support: number; resistance: number; bos: string | null; fvg: string | null }>({
+    support: 0,
+    resistance: 0,
+    bos: null,
+    fvg: null,
   });
 
   function safeParseFloat(value: any): number | null {
@@ -45,8 +60,7 @@ function App() {
       'News': false,
     };
 
-    // --- XAUUSD (preço do ouro) ---
-    // Tentativa 1: Twelve Data
+    // --- XAUUSD ---
     try {
       const xau = await fetchFromBackend('/api/twelve/XAUUSD');
       xauPrice = safeParseFloat(xau?.close);
@@ -56,13 +70,11 @@ function App() {
       }
     } catch {}
 
-    // Tentativa 2: Yahoo Finance (fallback)
     if (xauPrice === null) {
       try {
-        const yahooRes = await fetchFromBackend('/api/yahoo/GC=F'); // GC=F é o contrato futuro de ouro
+        const yahooRes = await fetchFromBackend('/api/yahoo/GC=F');
         xauPrice = safeParseFloat(yahooRes?.c);
         if (xauPrice !== null) {
-          // Converte para um formato similar ao da Twelve Data para manter compatibilidade
           setXauData({
             close: xauPrice,
             change: yahooRes?.c - yahooRes?.pc,
@@ -73,7 +85,46 @@ function App() {
       } catch {}
     }
 
-    // Se ainda assim não conseguir, mantém o último valor (não seta para null)
+    // --- Atualizar estrutura de mercado ---
+    const atr = safeParseFloat(xauData?.atr) ?? 18.5;
+    const currentPrice = xauPrice ?? lastPriceRef.current;
+    if (currentPrice !== null) {
+      const prevPrice = lastPriceRef.current;
+      const prevStructure = structureRef.current;
+      let newSupport = prevStructure.support;
+      let newResistance = prevStructure.resistance;
+      let bos: string | null = null;
+      let fvg: string | null = null;
+
+      // Inicializa níveis se for a primeira carga
+      if (newSupport === 0 || newResistance === 0) {
+        newSupport = currentPrice - atr * 0.5;
+        newResistance = currentPrice + atr * 0.5;
+      }
+
+      // Verifica BOS (rompimento)
+      if (prevPrice !== null) {
+        if (currentPrice > prevResistance) {
+          bos = 'BOS ↑ (alta)';
+          newSupport = prevResistance;
+          newResistance = currentPrice + atr * 0.5;
+        } else if (currentPrice < prevSupport) {
+          bos = 'BOS ↓ (baixa)';
+          newResistance = prevSupport;
+          newSupport = currentPrice - atr * 0.5;
+        }
+
+        // FVG se movimento for maior que 1.5x ATR
+        const move = Math.abs(currentPrice - prevPrice);
+        if (move > atr * 1.5) {
+          fvg = currentPrice > prevPrice ? 'FVG ↑' : 'FVG ↓';
+        }
+      }
+
+      structureRef.current = { support: newSupport, resistance: newResistance, bos, fvg };
+      setStructure({ support: newSupport, resistance: newResistance, bos, fvg });
+      lastPriceRef.current = currentPrice;
+    }
 
     // --- DXY ---
     try {
@@ -115,13 +166,11 @@ function App() {
       }
     } catch {}
 
-    // Fallback UST10Y baseado no Real Yield
     if (ustVal === null && realVal !== null) {
       ustVal = realVal + 2.0;
       setUst10y(ustVal);
     }
 
-    // Fallback DXY/VIX
     if (dxyVal === null) setDxy(104.8);
     if (vixVal === null) setVix(16.5);
 
@@ -173,7 +222,7 @@ function App() {
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
           <h1 className="text-lg font-bold text-amber-400 tracking-wide">XAU AI TERMINAL</h1>
-          <span className="text-xs text-gray-500 hidden sm:inline">v2.5 · Institutional</span>
+          <span className="text-xs text-gray-500 hidden sm:inline">v2.6 · Institutional</span>
         </div>
         <div className="flex items-center gap-4">
           <div>
@@ -258,11 +307,35 @@ function App() {
           </div>
         </Card>
 
-        <Card title="🧠 Smart Money" badge="BULLISH" badgeColor="green">
-          <div className="flex flex-wrap gap-1.5">
-            {['BOS D1','FVG','OB','Liq Sweep'].map(c => (
-              <span key={c} className="px-2 py-0.5 bg-green-900/30 text-green-400 rounded text-xs">{c}</span>
-            ))}
+        {/* Smart Money (agora dinâmico) */}
+        <Card title="🧠 Smart Money" badge={structure.bos ? 'ATIVO' : 'NEUTRO'} badgeColor={structure.bos ? 'green' : 'yellow'}>
+          <div className="text-xs space-y-2">
+            <div>
+              <div className="text-gray-500">Suporte (ATR)</div>
+              <div className="font-mono font-semibold">{structure.support.toFixed(2)}</div>
+            </div>
+            <div>
+              <div className="text-gray-500">Resistência (ATR)</div>
+              <div className="font-mono font-semibold">{structure.resistance.toFixed(2)}</div>
+            </div>
+            {structure.bos && (
+              <div className="flex items-center gap-1 text-green-400">
+                <span className="w-2 h-2 bg-green-500 rounded-full" />
+                <span className="font-semibold">{structure.bos}</span>
+              </div>
+            )}
+            {structure.fvg && (
+              <div className="flex items-center gap-1 text-yellow-400">
+                <span className="w-2 h-2 bg-yellow-500 rounded-full" />
+                <span className="font-semibold">{structure.fvg}</span>
+              </div>
+            )}
+            {!structure.bos && !structure.fvg && (
+              <div className="text-gray-600">Consolidando</div>
+            )}
+            <div className="text-gray-500 text-[0.65rem]">
+              Zona de liquidez: {structure.support.toFixed(2)} – {structure.resistance.toFixed(2)}
+            </div>
           </div>
         </Card>
 

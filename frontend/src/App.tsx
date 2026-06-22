@@ -33,39 +33,43 @@ function App() {
       liveCount++;
     } catch {}
 
+    // DXY real via Finnhub
     try {
-      const dxyRes = await fetchFromBackend('/api/twelve/DXY');
-      dxyVal = safeParseFloat(dxyRes?.close);
+      const dxyRes = await fetchFromBackend('/api/finnhub/DX-Y.NYB');
+      dxyVal = safeParseFloat(dxyRes?.c);
       if (dxyVal !== null) { setDxy(dxyVal); liveCount++; }
     } catch {}
 
+    // VIX real via Finnhub
     try {
-      const vixRes = await fetchFromBackend('/api/twelve/VIX');
-      vixVal = safeParseFloat(vixRes?.close);
+      const vixRes = await fetchFromBackend('/api/finnhub/VIX');
+      vixVal = safeParseFloat(vixRes?.c);
       if (vixVal !== null) { setVix(vixVal); liveCount++; }
     } catch {}
 
+    // UST 10Y via Alpha Vantage (com cache no backend)
     try {
       const ustRes = await fetchFromBackend('/api/alphavantage?function=TREASURY_YIELD&maturity=10year');
       ustVal = safeParseFloat(ustRes?.data?.[0]?.value);
       if (ustVal !== null) { setUst10y(ustVal); liveCount++; }
     } catch {}
 
+    // Real Yield via FRED
     try {
       const fredRes = await fetchFromBackend('/api/fred?series=DFII10');
       realVal = safeParseFloat(fredRes?.observations?.[0]?.value);
       if (realVal !== null) { setRealYield(realVal); liveCount++; }
     } catch {}
 
-    // Fallback inteligente para UST10Y baseado no Real Yield
+    // Fallback para UST10Y baseado no Real Yield
     if (ustVal === null && realVal !== null) {
-      ustVal = realVal + 2.0; // spread médio histórico
+      ustVal = realVal + 2.0;
       setUst10y(ustVal);
     }
 
-    // Fallback para DXY e VIX com estimativas conservadoras se ausentes
+    // Fallback neutro para DXY e VIX se as APIs falharem
     if (dxyVal === null) {
-      dxyVal = 104.8; // valor neutro
+      dxyVal = 104.8;
       setDxy(dxyVal);
     }
     if (vixVal === null) {
@@ -92,7 +96,7 @@ function App() {
   const change = safeParseFloat(xauData?.change) ?? 0;
   const changePct = safeParseFloat(xauData?.percent_change) ?? 0;
 
-  // Cálculo do score com o que temos disponível
+  // Cálculo do score macro com os indicadores disponíveis
   const macroScore = (() => {
     let score = 50;
     let divisors = 0;
@@ -114,7 +118,6 @@ function App() {
       divisors++;
     }
 
-    // Se pelo menos dois indicadores estão presentes, calcula
     if (divisors >= 2) {
       return Math.min(100, Math.max(10, Math.round(score)));
     }
@@ -171,9 +174,11 @@ function App() {
         </Card>
 
         <Card title="🏦 Fluxo Institucional" badge="BULLISH" badgeColor="green">
-          <Row label="COT Report" value="Long +12.4K" />
-          <Row label="ETF Flows" value="+8.2 ton" />
-          <Row label="BC Compras" value="+23 ton/mês" />
+          <div className="space-y-2 text-sm">
+            <Row label="COT Report" value="Long +12.4K" />
+            <Row label="ETF Flows" value="+8.2 ton" />
+            <Row label="BC Compras" value="+23 ton/mês" />
+          </div>
         </Card>
 
         <Card title="📰 Notícias" badge={news.length > 2 ? 'ATIVO' : 'NEUTRO'} badgeColor={news.length > 2 ? 'green' : 'yellow'}>
@@ -186,15 +191,19 @@ function App() {
                 </div>
               ))}
             </div>
-          ) : <p className="text-xs text-gray-500">Carregando notícias...</p>}
+          ) : (
+            <p className="text-xs text-gray-500">Carregando notícias...</p>
+          )}
         </Card>
 
         <Card title="📊 Análise Técnica" badge="BULLISH" badgeColor="green">
-          {['MN','W1','D1','H4','H1'].map(tf => (
-            <div key={tf} className="flex justify-between text-xs mb-1">
-              <span>{tf}</span><span className="text-green-400">Acima</span><span>{50 + Math.floor(Math.random() * 20)}</span>
-            </div>
-          ))}
+          <div className="text-xs space-y-1">
+            {['MN','W1','D1','H4','H1'].map(tf => (
+              <div key={tf} className="flex justify-between">
+                <span>{tf}</span><span className="text-green-400">Acima</span><span>{50 + Math.floor(Math.random() * 20)}</span>
+              </div>
+            ))}
+          </div>
         </Card>
 
         <Card title="🧠 Smart Money" badge="BULLISH" badgeColor="green">
@@ -206,8 +215,10 @@ function App() {
         </Card>
 
         <Card title="💬 Sentimento" badge="BULLISH" badgeColor="green">
-          <MiniStat label="Fear & Greed" value={`${60 + Math.floor(Math.random() * 15)}`} />
-          <MiniStat label="Varejo" value={`${55 + Math.floor(Math.random() * 15)}% Short`} />
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            <MiniStat label="Fear & Greed" value={`${60 + Math.floor(Math.random() * 15)}`} />
+            <MiniStat label="Varejo" value={`${55 + Math.floor(Math.random() * 15)}% Short`} />
+          </div>
         </Card>
 
         <Card title="🛡️ Risk Manager" badge="TRADE OK" badgeColor="green">
@@ -247,7 +258,6 @@ function App() {
   );
 }
 
-// Componentes auxiliares
 function Card({ title, badge, badgeColor, children }: { title: string; badge: string; badgeColor: 'green' | 'yellow' | 'red'; children: React.ReactNode }) {
   const colors = { green: 'bg-green-500/10 text-green-400', yellow: 'bg-yellow-500/10 text-yellow-400', red: 'bg-red-500/10 text-red-400' };
   return (

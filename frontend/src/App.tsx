@@ -20,19 +20,12 @@ function App() {
     'News': false,
   });
 
-  // Estrutura de mercado dinâmica
   const lastPriceRef = useRef<number | null>(null);
   const structureRef = useRef<{ support: number; resistance: number; bos: string | null; fvg: string | null }>({
-    support: 0,
-    resistance: 0,
-    bos: null,
-    fvg: null,
+    support: 0, resistance: 0, bos: null, fvg: null,
   });
   const [structure, setStructure] = useState<{ support: number; resistance: number; bos: string | null; fvg: string | null }>({
-    support: 0,
-    resistance: 0,
-    bos: null,
-    fvg: null,
+    support: 0, resistance: 0, bos: null, fvg: null,
   });
 
   function safeParseFloat(value: any): number | null {
@@ -52,37 +45,52 @@ function App() {
     let xauPrice: number | null = null;
 
     const newStatus: Record<ApiName, boolean> = {
-      'XAUUSD': false,
-      'DXY': false,
-      'VIX': false,
-      'UST10Y': false,
-      'Real Yield': false,
-      'News': false,
+      'XAUUSD': false, 'DXY': false, 'VIX': false, 'UST10Y': false, 'Real Yield': false, 'News': false,
     };
 
-    // --- XAUUSD ---
+    // ----- XAUUSD (com logs detalhados) -----
+    console.log('[XAU] Buscando preço...');
     try {
       const xau = await fetchFromBackend('/api/twelve/XAUUSD');
+      console.log('[XAU] Twelve Data resposta:', xau);
       xauPrice = safeParseFloat(xau?.close);
       if (xauPrice !== null) {
         setXauData(xau);
         newStatus['XAUUSD'] = true;
+        console.log('[XAU] Preço obtido via Twelve Data:', xauPrice);
       }
-    } catch {}
+    } catch (e) {
+      console.warn('[XAU] Twelve Data falhou:', e);
+    }
 
     if (xauPrice === null) {
+      console.log('[XAU] Tentando Yahoo Finance...');
       try {
         const yahooRes = await fetchFromBackend('/api/yahoo/GC=F');
+        console.log('[XAU] Yahoo resposta:', yahooRes);
         xauPrice = safeParseFloat(yahooRes?.c);
         if (xauPrice !== null) {
           setXauData({
             close: xauPrice,
-            change: yahooRes?.c - yahooRes?.pc,
-            percent_change: ((yahooRes?.c - yahooRes?.pc) / yahooRes?.pc) * 100,
+            change: (yahooRes?.c ?? 0) - (yahooRes?.pc ?? xauPrice),
+            percent_change: (( (yahooRes?.c ?? 0) - (yahooRes?.pc ?? xauPrice) ) / (yahooRes?.pc || 1)) * 100,
           });
           newStatus['XAUUSD'] = true;
+          console.log('[XAU] Preço obtido via Yahoo:', xauPrice);
         }
-      } catch {}
+      } catch (e) {
+        console.error('[XAU] Yahoo Finance falhou:', e);
+      }
+    }
+
+    if (xauPrice === null) {
+      console.warn('[XAU] Nenhuma fonte de preço disponível. Exibindo último valor conhecido ou ---');
+      // Mantém o último preço válido, se existir
+      if (lastPriceRef.current !== null) {
+        setXauData((prev: any) => prev || { close: lastPriceRef.current });
+      }
+    } else {
+      lastPriceRef.current = xauPrice;
     }
 
     // --- Atualizar estrutura de mercado ---
@@ -96,13 +104,11 @@ function App() {
       let bos: string | null = null;
       let fvg: string | null = null;
 
-      // Inicializa níveis se for a primeira carga
       if (newSupport === 0 || newResistance === 0) {
         newSupport = currentPrice - atr * 0.5;
         newResistance = currentPrice + atr * 0.5;
       }
 
-      // Verifica BOS (rompimento)
       if (prevPrice !== null) {
         if (currentPrice > prevResistance) {
           bos = 'BOS ↑ (alta)';
@@ -113,8 +119,6 @@ function App() {
           newResistance = prevSupport;
           newSupport = currentPrice - atr * 0.5;
         }
-
-        // FVG se movimento for maior que 1.5x ATR
         const move = Math.abs(currentPrice - prevPrice);
         if (move > atr * 1.5) {
           fvg = currentPrice > prevPrice ? 'FVG ↑' : 'FVG ↓';
@@ -123,64 +127,47 @@ function App() {
 
       structureRef.current = { support: newSupport, resistance: newResistance, bos, fvg };
       setStructure({ support: newSupport, resistance: newResistance, bos, fvg });
-      lastPriceRef.current = currentPrice;
     }
 
     // --- DXY ---
     try {
       const dxyRes = await fetchFromBackend('/api/finnhub/DX-Y.NYB');
       dxyVal = safeParseFloat(dxyRes?.c);
-      if (dxyVal !== null) {
-        setDxy(dxyVal);
-        newStatus['DXY'] = true;
-      }
+      if (dxyVal !== null) { setDxy(dxyVal); newStatus['DXY'] = true; }
     } catch {}
 
     // --- VIX ---
     try {
       const vixRes = await fetchFromBackend('/api/finnhub/VIX');
       vixVal = safeParseFloat(vixRes?.c);
-      if (vixVal !== null) {
-        setVix(vixVal);
-        newStatus['VIX'] = true;
-      }
+      if (vixVal !== null) { setVix(vixVal); newStatus['VIX'] = true; }
     } catch {}
 
     // --- UST 10Y ---
     try {
       const ustRes = await fetchFromBackend('/api/alphavantage?function=TREASURY_YIELD&maturity=10year');
       ustVal = safeParseFloat(ustRes?.data?.[0]?.value);
-      if (ustVal !== null) {
-        setUst10y(ustVal);
-        newStatus['UST10Y'] = true;
-      }
+      if (ustVal !== null) { setUst10y(ustVal); newStatus['UST10Y'] = true; }
     } catch {}
 
     // --- Real Yield ---
     try {
       const fredRes = await fetchFromBackend('/api/fred?series=DFII10');
       realVal = safeParseFloat(fredRes?.observations?.[0]?.value);
-      if (realVal !== null) {
-        setRealYield(realVal);
-        newStatus['Real Yield'] = true;
-      }
+      if (realVal !== null) { setRealYield(realVal); newStatus['Real Yield'] = true; }
     } catch {}
 
     if (ustVal === null && realVal !== null) {
       ustVal = realVal + 2.0;
       setUst10y(ustVal);
     }
-
     if (dxyVal === null) setDxy(104.8);
     if (vixVal === null) setVix(16.5);
 
     // --- News ---
     try {
       const newsRes = await fetchFromBackend('/api/gnews?q=gold+XAUUSD&max=5');
-      if (newsRes?.articles) {
-        setNews(newsRes.articles.slice(0, 5));
-        newStatus['News'] = true;
-      }
+      if (newsRes?.articles) { setNews(newsRes.articles.slice(0, 5)); newStatus['News'] = true; }
     } catch {}
 
     setApiStatus(newStatus);
@@ -217,12 +204,11 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100">
-      {/* Header */}
       <header className="sticky top-0 z-50 bg-gray-900/80 backdrop-blur border-b border-gray-800 px-4 py-3 flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
           <h1 className="text-lg font-bold text-amber-400 tracking-wide">XAU AI TERMINAL</h1>
-          <span className="text-xs text-gray-500 hidden sm:inline">v2.6 · Institutional</span>
+          <span className="text-xs text-gray-500 hidden sm:inline">v2.7 · Institutional</span>
         </div>
         <div className="flex items-center gap-4">
           <div>
@@ -240,7 +226,6 @@ function App() {
         </div>
       </header>
 
-      {/* Painel de status das APIs */}
       <div className="bg-gray-900 border-b border-gray-800 px-4 py-2">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs max-w-[1800px] mx-auto">
           <span className="text-gray-500 mr-1">APIs:</span>
@@ -256,9 +241,7 @@ function App() {
         </div>
       </div>
 
-      {/* Dashboard */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-4 max-w-[1800px] mx-auto">
-        {/* Macro */}
         <Card title="🌐 Macro Global" badge={macroScore && macroScore >= 60 ? 'BULLISH' : 'NEUTRAL'} badgeColor={macroScore && macroScore >= 60 ? 'green' : 'yellow'}>
           <div className="space-y-2 text-sm">
             <Row label="DXY" value={dxy !== null ? dxy.toFixed(2) : undefined} />
@@ -307,7 +290,6 @@ function App() {
           </div>
         </Card>
 
-        {/* Smart Money (agora dinâmico) */}
         <Card title="🧠 Smart Money" badge={structure.bos ? 'ATIVO' : 'NEUTRO'} badgeColor={structure.bos ? 'green' : 'yellow'}>
           <div className="text-xs space-y-2">
             <div>
@@ -354,7 +336,6 @@ function App() {
           </div>
         </Card>
 
-        {/* Veredict */}
         <div className="col-span-1 md:col-span-2 lg:col-span-3 xl:col-span-4 bg-gray-900 border-2 border-amber-500/50 rounded-xl p-5 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <div className="w-16 h-16 rounded-full border-4 border-green-500 flex items-center justify-center text-2xl font-bold text-green-400">

@@ -1,0 +1,3 @@
+import { MemoryHealth } from '../types/observability.types';
+import { MarketMemoryStore } from '@/market-memory';
+export class MemoryMonitor { private store: MarketMemoryStore; constructor() { this.store = new MarketMemoryStore(); } async getHealth(): Promise<MemoryHealth> { const entries = await this.store.getAllEntries(); const withOutcome = entries.filter(e => e.outcome); const timestamps = entries.map(e => new Date(e.createdAt).getTime()).sort(); return { totalEntries: entries.length, entriesWithOutcome: withOutcome.length, oldestEntry: timestamps[0] ?? 0, newestEntry: timestamps[timestamps.length - 1] ?? 0, storageSize: JSON.stringify(entries).length }; } }

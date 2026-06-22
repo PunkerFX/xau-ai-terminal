@@ -1,0 +1,3 @@
+export interface TradeEntry { id: string; timestamp: number; direction: 'LONG' | 'SHORT'; entryPrice: number; exitPrice?: number; pnl?: number; confidence: number; regime: string; notes?: string; tags: string[]; }
+export interface BehavioralWarning { type: 'OVERTRADING' | 'REVENGE_TRADING' | 'RISK_MISMANAGEMENT' | 'TRADING_DURING_NEWS' | 'LOW_QUALITY_SETUP'; severity: 'LOW' | 'MEDIUM' | 'HIGH'; message: string; timestamp: number; }
+export interface JournalReport { period: 'WEEKLY' | 'MONTHLY'; totalTrades: number; winRate: number; avgReturn: number; pnl: number; behavioralWarnings: BehavioralWarning[]; improvementSuggestions: string[]; }

@@ -1,0 +1,1 @@
+export interface InstitutionalBrief { timestamp: number; marketBias: string; confidence: number; conviction: number; topRisks: string[]; topOpportunities: string[]; regimeAnalysis: string; institutionalSummary: string; engines: { macro: number; institutional: number; derivatives: number; volatility: number; intermarket: number; technical: number; }; consensusScore: number; }
